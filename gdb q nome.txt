@@ -1,0 +1,11 @@
+gdb -q (nome)
+
+break (breakpoint)
+
+run
+
+layout asm
+
+set disassembly-flavor intel
+layout regs
+stepi
