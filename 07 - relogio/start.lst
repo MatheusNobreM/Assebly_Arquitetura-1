@@ -1,0 +1,128 @@
+     1                                  SYSCALL_WRITE equ 1
+     2                                  SYSCALL_SIGACTION equ 13
+     3                                  SYSCALL_PAUSE equ 34
+     4                                  SYSCALL_SETITIMER equ 38
+     5                                  
+     6                                  SIGALRM equ 14
+     7                                  ITIMER_REAL equ 0
+     8                                  
+     9                                  section .data
+    10 00000000 54696D657220696E74-         msg db 'Timer interrupt', 10
+    10 00000009 6572727570740A     
+    11                                      msg_len equ $ - msg
+    12                                  
+    13 00000010 4572726F20616F2063-         errmsg db 'Erro ao configurar sigaction', 10
+    13 00000019 6F6E66696775726172-
+    13 00000022 20736967616374696F-
+    13 0000002B 6E0A               
+    14                                      errmsg_len equ $ - errmsg ; <-- Corrigido aqui
+    15                                  
+    16                                     
+    17                                      ; Estrutura itimerval para setitimer
+    18                                      ; { {tv_sec, tv_usec}, {tv_sec, tv_usec} }
+    19                                      ; it_value.tv_sec, it_value.tv_usec
+    20                                      ; it_interval.tv_sec, it_interval.tv_usec
+    21                                      timer_val:
+    22 0000002D 050000000000000000-             dq 5, 0             ; it_value = 1 segundo (tv_sec = 1, tv_usec = 0)
+    22 00000036 00000000000000     
+    23 0000003D 010000000000000000-             dq 1, 0             ; it_interval = 1 segundo (tv_sec = 1, tv_usec = 0)
+    23 00000046 00000000000000     
+    24                                  
+    25                                  section .text
+    26                                      ;global _start
+    27                                     global main
+    28                                     global signal_handler
+    29                                     global configura_action
+    30                                     extern setup_sigaction
+    31                                     extern act2
+    32                                     extern act
+    33                                     extern sigaction
+    34                                     
+    35                                  
+    36                                  
+    37                                  
+    38                                  main:
+    39                                  ;_start:
+    40 00000000 E8(00000000)               call setup_sigaction
+    41 00000005 E82B000000                 call configura_action
+    42 0000000A E80F000000                 call configura_timer
+    43 0000000F E800000000                 call espera    
+    44                                  
+    45                                  
+    46                                  
+    47                                  
+    48                                  espera:
+    49                                  .loop:
+    50 00000014 B822000000                  mov rax, SYSCALL_PAUSE
+    51 00000019 0F05                        syscall
+    52 0000001B EBF7                        jmp .loop
+    53 0000001D C3                          ret
+    54                                      
+    55                                  
+    56                                  configura_timer:
+    57                                      ; Configura setitimer
+    58 0000001E B826000000                  mov rax, SYSCALL_SETITIMER
+    59 00000023 BF00000000                  mov rdi, ITIMER_REAL
+    60 00000028 488D35(2D000000)            lea rsi, [rel timer_val]    ; Ponteiro para a estrutura itimerval
+    61 0000002F 4831D2                      xor rdx, rdx                ; old_value = NULL
+    62 00000032 0F05                        syscall
+    63                                  
+    64 00000034 C3                          ret
+    65                                      
+    66                                  configura_action:
+    67                                  
+    68                                    ; Chama sigaction(SIGALRM, &act, NULL)
+    69 00000035 BF0E000000                  mov rdi, SIGALRM               ; SIGALRM
+    70 0000003A 488D35(00000000)            lea rsi, [rel act]          ; &act
+    71 00000041 4831D2                      xor rdx, rdx                ; NULL
+    72                                  
+    73 00000044 E8(00000000)                call sigaction
+    74 00000049 C3                          ret
+    75                                  
+    76 0000004A B80D000000                mov rax, SYSCALL_SIGACTION
+    77 0000004F BF0E000000                mov rdi, SIGALRM
+    78 00000054 48BE-                     mov rsi, act    ; Ponteiro para a nova sigaction
+    78 00000056 [0000000000000000] 
+    79 0000005E 4831D2                    xor rdx, rdx                ; oldact = NULL
+    80                                    ;mov r10, 8                  ; Tamanho de sigset_t (8 bytes para x86-64)
+    81 00000061 0F05                      syscall
+    82                                     
+    83 00000063 C3                        ret
+    84                                  
+    85                                  error:
+    86                                      ; Escreve mensagem de erro
+    87 00000064 B801000000                  mov rax, SYSCALL_WRITE
+    88 00000069 BF01000000                  mov rdi, 1                  ; stdout
+    89 0000006E 488D35(10000000)            lea rsi, [rel errmsg]
+    90 00000075 BA1D000000                  mov rdx, errmsg_len
+    91 0000007A 0F05                        syscall
+    92                                  
+    93 0000007C B83C000000                  mov rax, 60                 ; Syscall exit
+    94 00000081 BF01000000                  mov rdi, 1                  ; Código de saída 1 (erro)
+    95 00000086 0F05                        syscall
+    96                                  
+    97                                      
+    98                                  ; --- Handler para SIGALRM ---
+    99                                  signal_handler:
+   100                                      ; Salva os registradores que serão modificados
+   101 00000088 50                          push rax
+   102 00000089 52                          push rdx
+   103 0000008A 56                          push rsi
+   104 0000008B 57                          push rdi
+   105 0000008C 51                          push rcx 
+   106                                      
+   107                                      ; Escreve mensagem
+   108 0000008D B801000000                  mov rax, SYSCALL_WRITE
+   109 00000092 BF01000000                  mov rdi, 1                  ; stdout
+   110 00000097 488D35(00000000)            lea rsi, [rel msg]
+   111 0000009E BA10000000                  mov rdx, msg_len
+   112 000000A3 0F05                        syscall
+   113                                  
+   114                                      ; Restaura os registradores
+   115 000000A5 59                          pop rcx 
+   116 000000A6 5F                          pop rdi
+   117 000000A7 5E                          pop rsi
+   118 000000A8 5A                          pop rdx
+   119 000000A9 58                          pop rax
+   120                                  
+   121 000000AA C3                          ret

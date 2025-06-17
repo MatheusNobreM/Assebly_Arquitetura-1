@@ -9,3 +9,5 @@ layout asm
 set disassembly-flavor intel
 layout regs
 stepi
+
+x/s (0x402000) end
