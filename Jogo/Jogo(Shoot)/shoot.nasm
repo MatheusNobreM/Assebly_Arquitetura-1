@@ -1,13 +1,8 @@
-; Programa em Assembly (x86_64, Linux) que simula um duelo de faroeste.
-; O jogador deve pressionar a tecla de espaço no momento certo para atirar primeiro e vencer.
-; Usa chamadas de sistema (syscalls) para gerenciar entrada/saída, terminal e temporização.
-
-; === Definições de constantes para chamadas de sistema ===
-%define SYS_READ       0    ; Ler dados (ex.: teclado)
-%define SYS_WRITE      1    ; Escrever dados (ex.: tela)
+%define SYS_READ       0    
+%define SYS_WRITE      1    
 %define SYS_EXIT       60   ; Encerrar o programa
-%define SYS_NANOSLEEP  35   ; Pausar execução por um tempo
-%define SYS_IOCTL      16   ; Controlar dispositivos (ex.: terminal)
+%define SYS_NANOSLEEP  35   ; Pausar  
+%define SYS_IOCTL      16   ; terminal
 %define SYS_FCNTL      72   ; Configurar opções de arquivos
 %define SYS_TIME       201  ; Obter tempo atual
 %define SYS_SIGACTION  13   ; Configurar manipuladores de sinais
@@ -41,7 +36,7 @@ section .bss
     ; === Variáveis reservadas (inicializadas como zero) ===
     key          resb 1    ; Armazena uma tecla lida - resb N: Reserva N bytes na memória (1 byte = 8 bits).
     step_buf     resb 2    ; Buffer para números de 1 a 9 (dígito + nova linha)
-    tspec        resq 2    ; Estrutura para nanosleep (segundos e nanossegundos)
+    tspec        resq 2    ; Estrutura para nanosleep
     old_termios  resb 48   ; Configurações originais do terminal - resq N: Reserva N palavras de 64 bits (quad words, 8 bytes cada).
     new_termios  resb 48   ; Configurações modificadas do terminal
     sig_action   resb 152  ; Estrutura para manipulador de sinal
@@ -66,15 +61,15 @@ sigint_handler:
 ; =====================
 _start:
     ; === Configurar manipulador de SIGINT (Ctrl+C) ===
-    mov qword [sig_action], sigint_handler ; Define função do manipulador
-    mov qword [sig_action + 8], 0         ; sa_flags
-    mov qword [sig_action + 16], SA_RESTORER ; sa_restorer
-    mov qword [sig_action + 24], 0        ; sa_mask
-    mov rax, SYS_SIGACTION                ; Configura manipulador
-    mov rdi, SIGINT                       ; Sinal a ser tratado
-    lea rsi, [sig_action]                 ; Endereço da estrutura
-    xor rdx, rdx                          ; Sem máscara antiga - Zera o registrador rdx usando xor rdx, rdx (uma forma eficiente de definir rdx como 0).
-    mov r10, 8                            ; Tamanho da máscara
+    mov qword [sig_action], sigint_handler   
+    mov qword [sig_action + 8], 0            
+    mov qword [sig_action + 16], SA_RESTORER 
+    mov qword [sig_action + 24], 0           ; sa_mask
+    mov rax, SYS_SIGACTION                   
+    mov rdi, SIGINT                          ; Sinal a ser tratado
+    lea rsi, [sig_action]                    ; Endereço da estrutura
+    xor rdx, rdx                             
+    mov r10, 8                               ; Tamanho da máscara
     syscall
 
     call set_raw_mode ; Configura terminal em modo bruto
@@ -83,12 +78,12 @@ _start:
     mov rdi, intro_msg
     call print_string
 
-    mov r12, 1 ; Contador de passos (1 a 10)
+    mov r12, 1 ; Contador de passos
 .count_loop:
     cmp r12, 10
-    ; A instrução cmp subtrai 10 de r12 internamente (sem alterar r12) e
+    ;  subtrai 10 de r12 internamente (sem alterar r12) e
     ; define flags no registrador de status para indicar o resultado (igual, maior ou menor)
-    jne .print_step ; Se não for 10, exibe número
+    jne .print_step ; !10, exibe número
     
     ; === Exibir "10" ===
     mov rdi, number_10_str
@@ -96,74 +91,73 @@ _start:
     jmp .newline
 
 .print_step:
-    ; === Converter número para caractere e exibir ===
     mov rax, r12
     add al, '0'         ; Converte número para caractere ASCII
     mov [step_buf], al  ; Armazena no buffer
     mov byte [step_buf+1], 10 ; Adiciona nova linha
     
-    mov rax, SYS_WRITE  ; Escreve no terminal
-    mov rdi, STDOUT ; Define a saída como o terminal.
-    mov rsi, step_buf ; Aponta para o buffer com o dígito e a nova linha.
-    mov rdx, 2 ; Aponta para o buffer com o dígito e a nova linha.
+    mov rax, SYS_WRITE  
+    mov rdi, STDOUT     ; Define a saída como o terminal.
+    mov rsi, step_buf   ; Aponta para o buffer com o dígito e a nova linha.
+    mov rdx, 2          
     syscall
 
 .newline:
-    call flush_keyboard   ; Limpa entradas pendentes
-    call sleep_1s         ; Espera 1 segundo
-    call check_keypress   ; Verifica tecla pressionada
-    cmp rax, 1
-    je drew_early         ; Se tecla foi pressionada, jogador perde
+    call flush_keyboard   ; Limpa entradas pendentes do teclado para evitar leituras acidentais
+    call sleep_1s     
+    call check_keypress   ; Verifica se o jogador pressionou uma tecla durante a contagem
+    cmp rax, 1            ; Compara o retorno de check_keypress com 1 (tecla pressionada)
+    je drew_early         ; se keypress
     
-    inc r12               ; Incrementa contador
-    cmp r12, 11
-    jne .count_loop       ; Continua até 10 passos
+    inc r12               ; Incrementa o contador de passos
+    cmp r12, 11           ; Verifica se o contador atingiu 11
+    jne .count_loop       ; Se não atingiu 11, volta ao início do loop para o próximo passo
 
     ; === Exibir dica para atirar ===
-    mov rdi, space_hint
-    call print_string
+    mov rdi, space_hint   ; Carrega o endereço ("Press SPACE to shoot!")
+    call print_string     
 
-    call flush_keyboard   ; Limpa entradas
-    call get_random_delay ; Gera atraso aleatório (2-4s)
-    call wait_draw_or_key ; Espera oponente sacar ou tecla
-    cmp rax, 1
-    je win                ; Se tecla pressionada, jogador vence
+    call flush_keyboard   ; Limpa entradas pendentes do teclado antes do momento do duelo
+    call get_random_delay ; Gera um atraso aleatório para o oponente sacar
+    call wait_draw_or_key ; Espera o atraso ou uma tecla do jogador
+    cmp rax, 1            ; Verifica se o jogador pressionou uma tecla (retorno 1 de wait_draw_or_key)
+    je win                ; Se tecla foi pressionada a tempo(vitória)
 
     ; === Oponente saca ===
-    mov rdi, draw_msg
-    call print_string
+    mov rdi, draw_msg     ; Carrega o endereço("HE DRAWS...")
+    call print_string    
 
-    call wait_2s_or_key   ; Espera 2s ou tecla
-    cmp rax, 1
-    je win                ; Se tecla pressionada, jogador vence
+    call wait_2s_or_key   
+    cmp rax, 1            
+    je win                
 
 lose:
     ; === Exibir mensagem de derrota ===
-    mov rdi, lose_msg
-    call print_string
-    jmp end_game
+    mov rdi, lose_msg     ; Carrega o endereço da string lose_msg ("AND SHOOTS... YOU ARE DEAD.")
+    call print_string     ; Exibe a mensagem de derrota no terminal
+    jmp end_game          ; Pula para o fim do jogo
 
 win:
     ; === Exibir mensagem de vitória ===
-    mov rdi, win_msg
-    call print_string
-    jmp end_game
+    mov rdi, win_msg      ; Carrega o endereço da string win_msg ("BUT YOU SHOOT FIRST. YOU KILLED HIM.")
+    call print_string     ; Exibe a mensagem de vitória no terminal
+    jmp end_game          ; Pula para o fim do jogo
 
 drew_early:
     ; === Exibir mensagem de tiro precoce ===
-    mov rdi, early_msg
-    call print_string
-    jmp end_game
+    mov rdi, early_msg    ; Carrega o endereço da string early_msg ("YOU DREW TOO EARLY! YOU ARE DEAD.")
+    call print_string     ; Exibe a mensagem de tiro precoce no terminal
+    jmp end_game          ; Pula para o fim do jogo
 
 end_game:
     ; === Aguardar tecla para sair ===
-    mov rdi, exit_msg
-    call print_string
-    call wait_key
-    call restore_terminal ; Restaura terminal
-    mov rax, SYS_EXIT     ; Encerra programa
-    xor rdi, rdi
-    syscall
+    mov rdi, exit_msg     ; Carrega o endereço da string exit_msg ("Press any key to exit.")
+    call print_string     ; Exibe a mensagem no terminal
+    call wait_key         ; Aguarda o jogador pressionar qualquer tecla para sair
+    call restore_terminal ; Restaura as configurações originais do terminal
+    mov rax, SYS_EXIT     ; Prepara a chamada de sistema para encerrar o programa
+    xor rdi, rdi          ; Define o código de saída como 0 (sucesso)
+    syscall               ; Executa a chamada para encerrar o programa
 
 ; =====================
 ; Funções auxiliares
@@ -172,232 +166,227 @@ end_game:
 ; === Função: print_string ===
 ; Exibe uma string no terminal usando SYS_WRITE
 print_string:
-    push rsi
-    push rdx
-    push rax
-    push rdi
+    push rsi              ; Salva rsi na pilha para preservá-lo
+    push rdx              ; Salva rdx na pilha para preservá-lo
+    push rax              ; Salva rax na pilha para preservá-lo
+    push rdi              ; Salva rdi na pilha para preservá-lo
     
     ; Calcular tamanho da string (até byte nulo)
-    xor rcx, rcx
-    mov rsi, rdi
+    xor rcx, rcx          ; Zera rcx para contar o tamanho da string
+    mov rsi, rdi          ; Copia o endereço da string (em rdi) para rsi
 .count_loop:
-    lodsb
-    test al, al
-    jz .count_done
-    inc rcx
-    jmp .count_loop
+    lodsb                 ; Carrega o próximo byte da string em al e incrementa rsi
+    test al, al           ; Verifica se o byte é 0 (nulo, fim da string)
+    jz .count_done        ; Se for nulo, pula para count_done
+    inc rcx               ; Incrementa o contador de bytes
+    jmp .count_loop       ; Volta ao loop para o próximo byte
 .count_done:
     
-    mov rax, SYS_WRITE
-    mov rdi, STDOUT
-    pop rsi
-    mov rdx, rcx
-    syscall
+    mov rax, SYS_WRITE    ; Prepara a chamada de sistema SYS_WRITE para escrever no terminal
+    mov rdi, STDOUT       ; Define o descritor de saída como STDOUT (tela)
+    pop rsi               ; Restaura o endereço original da string em rsi
+    mov rdx, rcx          ; Define o número de bytes a escrever (contado em rcx)
+    syscall               ; Executa a chamada para escrever a string no terminal
     
-    pop rax
-    pop rdx
-    pop rsi
-    ret
+    pop rax               ; Restaura rax da pilha
+    pop rdx               ; Restaura rdx da pilha
+    pop rsi               ; Restaura rsi da pilha
+    ret                   ; Retorna ao chamador
 
 ; === Função: wait_key ===
 ; Lê uma tecla do teclado
 wait_key:
-    mov rax, SYS_READ
-    mov rdi, STDIN ;Entrada padrão (teclado)
-    mov rsi, key
-    mov rdx, 1
-    syscall
-    ret
+    mov rax, SYS_READ     ; Prepara a chamada de sistema SYS_READ para ler do teclado
+    mov rdi, STDIN        ; Define o descritor de entrada como STDIN (teclado)
+    mov rsi, key          ; Define o endereço da variável key como destino da tecla lida
+    mov rdx, 1            ; Define que 1 byte será lido (uma tecla)
+    syscall               ; Executa a chamada para ler a tecla
+    ret                   ; Retorna ao chamador
 
 ; === Função: check_keypress ===
 ; Verifica se uma tecla foi pressionada (não bloqueante)
 check_keypress:
     ; Configurar pollfd para STDIN
-    mov dword [pollfd], STDIN ; Entrada padrão (teclado)
-    mov dword [pollfd + 4], POLLIN
+    mov dword [pollfd], STDIN ; Define o descritor de arquivo como STDIN na estrutura pollfd
+    mov dword [pollfd + 4], POLLIN ; Define o evento POLLIN (entrada disponível) na estrutura pollfd
     
-    mov rax, SYS_POLL
-    mov rdi, pollfd
-    mov rsi, 1
-    mov rdx, 0
-    syscall
+    mov rax, SYS_POLL     ; Prepara a chamada de sistema SYS_POLL para verificar eventos
+    mov rdi, pollfd       ; Passa o endereço da estrutura pollfd
+    mov rsi, 1            ; Define que 1 descritor de arquivo será verificado
+    mov rdx, 0            ; Define timeout como 0 (retorna imediatamente)
+    syscall               ; Executa a chamada para verificar se há entrada
     
-    test rax, rax
-    jz .nokey ; Nenhuma tecla pressionada
+    test rax, rax         ; Verifica se rax é 0 (nenhum evento)
+    jz .nokey             ; Se rax for 0, pula para nokey (nenhuma tecla pressionada)
     
     ; Ler tecla
-    mov rax, SYS_READ
-    mov rdi, STDIN ; Entrada padrão (teclado)
-    mov rsi, key
-    mov rdx, 1
-    syscall
+    mov rax, SYS_READ     ; Prepara a chamada SYS_READ para ler a tecla
+    mov rdi, STDIN        ; Define o descritor de entrada como STDIN
+    mov rsi, key          ; Define o endereço da variável key como destino
+    mov rdx, 1            ; Define que 1 byte será lido
+    syscall               ; Executa a chamada para ler a tecla
     
-    cmp rax, 1
-    jne .nokey
-    mov rax, 1 ; Tecla pressionada
-    ret
+    cmp rax, 1            ; Verifica se 1 byte foi lido (tecla pressionada)
+    jne .nokey            ; Se não, pula para nokey (nenhuma tecla)
+    mov rax, 1            ; Define rax como 1 (indica que uma tecla foi pressionada)
+    ret                   ; Retorna ao chamador
 .nokey:
-    xor rax, rax ; Nenhuma tecla
-    ret
+    xor rax, rax          ; Zera rax (indica que nenhuma tecla foi pressionada)
+    ret                   ; Retorna ao chamador
 
 ; === Função: flush_keyboard ===
 ; Limpa entradas pendentes do teclado
 flush_keyboard:
 .flush:
-    call check_keypress
-    cmp rax, 1
-    je .flush
-    ret
+    call check_keypress   ; Chama check_keypress para verificar se há tecla pendente
+    cmp rax, 1            ; Verifica se uma tecla foi detectada
+    je .flush             ; Se sim, volta ao início para limpar mais teclas
+    ret                   ; Retorna quando não há mais teclas pendentes
 
 ; === Função: sleep_1s ===
 ; Pausa por 1 segundo
 sleep_1s:
-    mov qword [tspec], 1
-    mov qword [tspec+8], 0
-    mov rax, SYS_NANOSLEEP
-    mov rdi, tspec
-    xor rsi, rsi
-    syscall
-    ret
+    mov qword [tspec], 1  ; Define 1 segundo na estrutura tspec (campo de segundos)
+    mov qword [tspec+8], 0 ; Define 0 nanossegundos na estrutura tspec
+    mov rax, SYS_NANOSLEEP ; Prepara a chamada de sistema SYS_NANOSLEEP para pausar
+    mov rdi, tspec        ; Passa o endereço da estrutura tspec
+    xor rsi, rsi          ; Define rsi como 0 (sem estrutura para tempo restante)
+    syscall               ; Executa a chamada para pausar por 1 segundo
+    ret                   ; Retorna ao chamador
 
 ; === Função: get_random_delay ===
 ; Gera atraso aleatório (2-4 segundos)
 get_random_delay:
-    mov rax, SYS_TIME
-    xor rdi, rdi
-    syscall
+    mov rax, SYS_TIME     ; Prepara a chamada de sistema SYS_TIME para obter o tempo atual
+    xor rdi, rdi          ; Define rdi como 0 (argumento padrão para SYS_TIME)
+    syscall               ; Executa a chamada, retornando o tempo em segundos em rax
     
     ; Usar bits menos significativos para gerar número entre 2-4
-    and eax, 0x3  ; 0-3
-    add eax, 2    ; 2-5
-    cmp eax, 4
-    jle .ok
-    mov eax, 4
+    and eax, 0x3          ; Máscara para obter os 2 bits menos significativos (0 a 3)
+    add eax, 1            ; Adiciona 2 para obter um valor entre 2 e 5
+    cmp eax, 2           ; Verifica se o valor é maior que 2
+    jle .ok               ; Se menor ou igual a 4, pula para ok
+    mov eax, 2            ; Se maior, limita o valor a 2
 .ok:
-    mov r13d, eax ; Salva atraso em r13
-    ret
+    mov r13d, eax         ; Salva o atraso (2 a 4 segundos) em r13
+    ret                   ; Retorna ao chamador
 
 ; === Função: wait_draw_or_key ===
 ; Espera o atraso aleatório ou uma tecla
 wait_draw_or_key:
-    imul r13, 10  ; Converte atraso para décimos de segundo
-    
+    imul r13, 10          ; Multiplica o atraso (em r13) por 10 para converter em décimos de segundo
 .loop:
-    call check_keypress
-    cmp rax, 1
-    je .reacted ; Tecla pressionada
+    call check_keypress   ; Verifica se uma tecla foi pressionada
+    cmp rax, 1            ; Compara o retorno com 1 (tecla pressionada)
+    je .reacted           ; Se tecla foi pressionada, pula para reacted
     
     ; Esperar 0.1 segundo
-    mov qword [tspec], 0
-    mov qword [tspec+8], 100000000 ; 100ms
-    mov rax, SYS_NANOSLEEP
-    mov rdi, tspec
-    xor rsi, rsi
-    syscall
+    mov qword [tspec], 0  ; Define 0 segundos na estrutura tspec
+    mov qword [tspec+8], 100000000 ; Define 100 milissegundos (0.1s) na estrutura tspec
+    mov rax, SYS_NANOSLEEP ; Prepara a chamada SYS_NANOSLEEP para pausar
+    mov rdi, tspec        ; Passa o endereço da estrutura tspec
+    xor rsi, rsi          ; Define rsi como 0 (sem estrutura para tempo restante)
+    syscall               ; Executa a chamada para pausar por 0.1 segundo
     
-    dec r13
-    jnz .loop
+    dec r13               ; Decrementa o contador de décimos de segundo
+    jnz .loop             ; Se r13 não for 0, volta ao início do loop
     
-    xor rax, rax ; Tempo esgotado
-    ret
+    xor rax, rax          ; Define rax como 0 (tempo esgotado, sem tecla)
+    ret                   ; Retorna ao chamador
 .reacted:
-    mov rax, 1 ; Tecla pressionada
-    ret
+    mov rax, 1            ; Define rax como 1 (tecla pressionada)
+    ret                   ; Retorna ao chamador
 
 ; === Função: wait_2s_or_key ===
 ; Espera 2 segundos ou uma tecla
 wait_2s_or_key:
-    mov r14, 20 ; 20 x 0.1s = 2s
-    
+    mov r14, 20           ; Define r14 como 20 (20 x 0.1s = 2 segundos)
 .loop:
-    call check_keypress
-    cmp rax, 1
-    je .pressed ; Tecla pressionada
+    call check_keypress   ; Verifica se uma tecla foi pressionada
+    cmp rax, 1            ; Compara o retorno com 1 (tecla pressionada)
+    je .pressed           ; Se tecla foi pressionada, pula para pressed
     
     ; Esperar 0.1 segundo
-    mov qword [tspec], 0
-    mov qword [tspec+8], 100000000 ; 100ms
-    mov rax, SYS_NANOSLEEP
-    mov rdi, tspec
-    xor rsi, rsi
-    syscall
+    mov qword [tspec], 0  ; Define 0 segundos na estrutura tspec
+    mov qword [tspec+8], 100000000 ; Define 100 milissegundos (0.1s) na estrutura tspec
+    mov rax, SYS_NANOSLEEP ; Prepara a chamada SYS_NANOSLEEP para pausar
+    mov rdi, tspec        ; Passa o endereço da estrutura tspec
+    xor rsi, rsi          ; Define rsi como 0 (sem estrutura para tempo restante)
+    syscall               ; Executa a chamada para pausar por 0.1 segundo
     
-    dec r14
-    jnz .loop
+    dec r14               ; Decrementa o contador de décimos de segundo
+    jnz .loop             ; Se r14 não for 0, volta ao início do loop
     
-    xor rax, rax ; Tempo esgotado
-    ret
+    xor rax, rax          ; Define rax como 0 (tempo esgotado, sem tecla)
+    ret                   ; Retorna ao chamador
 .pressed:
-    mov rax, 1 ; Tecla pressionada
-    ret
+    mov rax, 1            ; Define rax como 1 (tecla pressionada)
+    ret                   ; Retorna ao chamador
 
 ; === Função: set_raw_mode ===
 ; Configura o terminal em modo bruto (sem eco, sem buffer)
 set_raw_mode:
     ; Obter configurações atuais do terminal
-    mov rax, SYS_IOCTL ; Controlar dispositivos
-    mov rdi, STDIN ; Entrada padrão (teclado)
-    mov rsi, 0x5401 ; TCGETS
-    mov rdx, old_termios
-    syscall
+    mov rax, SYS_IOCTL    ; Prepara a chamada de sistema SYS_IOCTL para controlar dispositivos
+    mov rdi, STDIN        ; Define o descritor de entrada como STDIN (teclado)
+    mov rsi, 0x5401       ; Define o comando TCGETS (0x5401) para obter configurações do terminal
+    mov rdx, old_termios  ; Define old_termios como destino das configurações atuais
+    syscall               ; Executa a chamada para salvar configurações em old_termios
     
     ; Copiar configurações para new_termios
-    mov rsi, old_termios
-    mov rdi, new_termios
-    mov rcx, 48 ; Define rcx como 48, o número de bytes a serem copiados (tamanho da estrutura termios)
-    rep movsb
+    mov rsi, old_termios  ; Define o endereço de origem como old_termios
+    mov rdi, new_termios  ; Define o endereço de destino como new_termios
+    mov rcx, 48           ; Define rcx como 48, o número de bytes a serem copiados (tamanho da estrutura termios)
+    rep movsb             ; Copia 48 bytes de old_termios para new_termios
     
     ; Desativar ECHO e ICANON
-    mov rdi, new_termios
-    and dword [rdi + 12], ~(ECHO | ICANON) ; Modifica o campo de flags da estrutura termios (no offset 12, que corresponde ao campo c_lflag).
+    mov rdi, new_termios  ; Carrega o endereço de new_termios
+    and dword [rdi + 12], ~(ECHO | ICANON) ; Desativa as flags ECHO e ICANON no campo c_lflag (offset 12)
     ; ECHO (8): Quando ativo, faz com que as teclas digitadas sejam exibidas no terminal.
     ; ICANON (2): Quando ativo, faz o terminal operar em modo canônico, onde a entrada é processada apenas após pressionar Enter.
     ; ~(ECHO | ICANON): Combina ECHO (8) e ICANON (2) com OR bit a bit (8 | 2 = 10), inverte com NOT (~10), e usa AND para desativar essas flags.
-    ;Resultado: Desativa ECHO (teclas não aparecem na tela) e ICANON (teclas são lidas imediatamente, sem esperar Enter), configurando o modo bruto.
-
+    ; Resultado: Desativa ECHO (teclas não aparecem na tela) e ICANON (teclas são lidas imediatamente, sem esperar Enter), configurando o modo bruto.
 
     ; Aplicar novas configurações
-    mov rax, SYS_IOCTL ; Controlar dispositivos
-    mov rdi, STDIN ; Entrada padrão (teclado)
-    mov rsi, 0x5402 ; TCSETS
-    mov rdx, new_termios ; Passa o endereço de new_termios, que contém as configurações modificadas (sem ECHO e ICANON)
-    syscall
+    mov rax, SYS_IOCTL    ; Prepara a chamada SYS_IOCTL para aplicar configurações
+    mov rdi, STDIN        ; Define o descritor de entrada como STDIN
+    mov rsi, 0x5402       ; Define o comando TCSETS (0x5402) para aplicar configurações
+    mov rdx, new_termios  ; Passa o endereço de new_termios, que contém as configurações modificadas
+    syscall               ; Executa a chamada para aplicar o modo bruto ao terminal
     ; Efeito: O terminal agora lê teclas imediatamente (sem esperar Enter) e não exibe as teclas digitadas
 
-    
     ; Configurar modo não bloqueante
-    mov rax, SYS_FCNTL
-    mov rdi, STDIN ; Entrada padrão (teclado)
-    mov rsi, 3 ; F_GETFL: Especifica o comando F_GETFL (3), que obtém as flags atuais do descritor.
-    syscall
+    mov rax, SYS_FCNTL    ; Prepara a chamada de sistema SYS_FCNTL para manipular opções de arquivo
+    mov rdi, STDIN        ; Define o descritor de entrada como STDIN
+    mov rsi, 3            ; Define o comando F_GETFL (3) para obter as flags atuais
+    syscall               ; Executa a chamada, retornando as flags em rax
     
-    mov rdi, STDIN ; Entrada padrão (teclado)
-    mov rsi, 4 ; F_SETFL: Especifica o comando F_SETFL (4), que define novas flags.
-    mov rdx, rax ; Copia as flags atuais (retornadas por F_GETFL) para rdx.
-    or rdx, O_NONBLOCK ; Adiciona a flag O_NONBLOCK (04000) às flags existentes usando OR bit a bit.
-    syscall
-    ; Efeito: Leituras de STDIN (ex.: em check_keypress) não bloqueiam o programa.
-    ; Se não houver tecla pressionada, a leitura retorna imediatamente, permitindo que o jogo continue sem pausas.
-    ret
+    mov rdi, STDIN        ; Define o descritor de entrada como STDIN
+    mov rsi, 4            ; Define o comando F_SETFL (4) para definir novas flags
+    mov rdx, rax          ; Copia as flags atuais (retornadas por F_GETFL) para rdx
+    or rdx, O_NONBLOCK    ; Adiciona a flag O_NONBLOCK (04000) às flags existentes usando OR bit a bit
+    syscall               ; Executa a chamada para aplicar o modo não bloqueante
+    ; Efeito: Leituras de STDIN (ex.: em check_keypress) não bloqueiam o programa
+    ret                   ; Retorna ao chamador
 
 ; === Função: restore_terminal ===
 ; Restaura configurações originais do terminal
 restore_terminal:
-    mov rax, SYS_IOCTL ; Controlar dispositivos
-    mov rdi, STDIN ; Entrada padrão (teclado)
-    mov rsi, 0x5402 ; TCSETS - obtém a estrutura termios do terminal
-    mov rdx, old_termios
-    syscall
+    mov rax, SYS_IOCTL    ; Prepara a chamada de sistema SYS_IOCTL para controlar dispositivos
+    mov rdi, STDIN        ; Define o descritor de entrada como STDIN (teclado)
+    mov rsi, 0x5402       ; Define o comando TCSETS (0x5402) para aplicar configurações
+    mov rdx, old_termios  ; Passa o endereço de old_termios, com as configurações originais
+    syscall               ; Executa a chamada para restaurar as configurações do terminal
     
     ; Restaurar flags de arquivo
-    mov rax, SYS_FCNTL
-    mov rdi, STDIN ; Entrada padrão (teclado)
-    mov rsi, 3 ; F_GETFL
-    syscall
+    mov rax, SYS_FCNTL    ; Prepara a chamada SYS_FCNTL para manipular opções de arquivo
+    mov rdi, STDIN        ; Define o descritor de entrada como STDIN
+    mov rsi, 3            ; Define o comando F_GETFL (3) para obter as flags atuais
+    syscall               ; Executa a chamada, retornando as flags em rax
     
-    mov rdi, STDIN ; Entrada padrão (teclado)
-    mov rsi, 4 ; F_SETFL
-    mov rdx, rax
-    and rdx, ~O_NONBLOCK
-    syscall
-    ret
+    mov rdi, STDIN        ; Define o descritor de entrada como STDIN
+    mov rsi, 4            ; Define o comando F_SETFL (4) para definir novas flags
+    mov rdx, rax          ; Copia as flags atuais para rdx
+    and rdx, ~O_NONBLOCK  ; Remove a flag O_NONBLOCK usando AND com NOT para restaurar o modo bloqueante
+    syscall               ; Executa a chamada para aplicar as flags restauradas
+    ret                   ; Retorna ao chamador
